@@ -1,6 +1,25 @@
-fn main() -> color_eyre::Result<()> {
+use clap::Parser;
+use color_eyre::Result;
+
+#[derive(Parser, Debug)]
+struct Args {
+    #[clap(short)]
+    preview: bool
+}
+
+fn main() -> Result<()> {
+    pollster::block_on(run())
+}
+
+async fn run() -> Result<()> {
     env_logger::init();
-    pollster::block_on(ranim_render::output())
+    let args = Args::parse();
+
+    if args.preview {
+        ranim_render::preview().await
+    } else {
+        ranim_render::output().await
+    }
 }
 
 // #[cfg(test)]
