@@ -27,24 +27,7 @@ async fn run() -> Result<()> {
     color_eyre::install()?;
     env_logger::init();
     
-    let args = dbg!(Args::parse());
-
-    let mut encode_context = {
-        let encoder =
-            AVCodec::find_encoder_by_name(cstr!("png")).context("Failed to find encoder codec")?;
-        let mut encode_context = AVCodecContext::new(&encoder);
-        encode_context.set_bit_rate(400000);
-        encode_context.set_width(width);
-        encode_context.set_height(height);
-        encode_context.set_time_base(ra(1, 60));
-        encode_context.set_framerate(ra(60, 1));
-        encode_context.set_gop_size(10);
-        encode_context.set_max_b_frames(1);
-        encode_context.set_pix_fmt(rsmpeg::ffi::AVPixelFormat_AV_PIX_FMT_RGB24);
-        encode_context.open(None)?;
-        encode_context
-    };
-
+    let args = Args::parse();
 
     if args.preview {
         ranim_render::preview().await

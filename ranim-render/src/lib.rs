@@ -15,7 +15,6 @@ use winit_input_helper::WinitInputHelper;
 
 mod buf;
 mod renderer;
-pub mod video;
 
 pub async fn preview() -> Result<()> {
     let mut input = WinitInputHelper::new();

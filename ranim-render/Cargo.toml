@@ -16,7 +16,7 @@ log = "0.4"
 openh264 = "0.2"
 pollster = "0.2"
 ranim = { path = ".." }
-rsmpeg = "0.8.2"
+# rsmpeg = "0.8.2"
 wgpu = "0.12"
 winit = "0.26"
 winit_input_helper = "0.12"

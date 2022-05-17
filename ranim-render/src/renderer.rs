@@ -1,11 +1,10 @@
 use std::num::NonZeroU32;
 
 use color_eyre::{eyre::eyre, Result};
-use openh264::encoder::Encoder;
 use wgpu::{util::DeviceExt, COPY_BYTES_PER_ROW_ALIGNMENT};
 use winit::{dpi::PhysicalSize, window::Window};
 
-use crate::{buf::Vertex, video::util::RgbaYuvConverter};
+use crate::buf::Vertex;
 
 pub enum RenderMode<'a> {
     Preview(&'a Window),
@@ -21,8 +20,6 @@ enum RenderTarget {
     },
     Video {
         target: TextureTarget,
-        converter: RgbaYuvConverter,
-        encoder: Encoder,
         video_buffer: Vec<u8>,
     },
 }
@@ -226,8 +223,7 @@ impl Renderer {
             usage: wgpu::BufferUsages::INDEX,
         });
 
-        // FFmpeg things 
-        
+        // FFmpeg things
 
         Ok(Self {
             device,
@@ -313,14 +309,12 @@ impl Renderer {
             }
             RenderTarget::Video {
                 target,
-                converter,
-                encoder,
                 video_buffer,
             } => {
                 render_pass(&target.view);
                 texture_target_common(cmdenc, target, &self.queue, &self.device).await;
-                converter.convert(&target.image_buffer);
-                encoder.encode(converter).unwrap().write_vec(video_buffer);
+                
+                // TODO: write to video
 
                 target.output_buffer.unmap();
             }
