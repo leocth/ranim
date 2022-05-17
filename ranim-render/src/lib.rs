@@ -1,6 +1,8 @@
 #![warn(clippy::pedantic)]
 #![deny(rust_2018_idioms)]
 
+use std::{fmt::Display, str::FromStr};
+
 use color_eyre::Result;
 use renderer::{RenderMode, Renderer};
 use winit::{
@@ -60,16 +62,53 @@ pub async fn preview() -> Result<()> {
     });
 }
 
-pub async fn output() -> Result<()> {
+pub async fn output(quality: Quality) -> Result<()> {
     let mut renderer = Renderer::new(RenderMode::Output {
-        size: PhysicalSize {
-            width: 854,
-            height: 480,
-        },
+        size: quality.size(),
     })
     .await?;
 
     renderer.render().await?;
 
     Ok(())
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum Quality {
+    High,
+    Medium,
+    Low,
+}
+impl Quality {
+    pub fn size(self) -> PhysicalSize<u32> {
+        match self {
+            Quality::High => PhysicalSize::new(1920, 1080),
+            Quality::Medium => PhysicalSize::new(1280, 720),
+            Quality::Low => PhysicalSize::new(854, 480),
+        }
+    }
+    pub fn frame_rate(self) -> u32 {
+        match self {
+            Quality::High => 60,
+            Quality::Medium => 30,
+            Quality::Low => 15,
+        }
+    }
+}
+impl Display for Quality {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{self:?}")
+    }
+}
+impl FromStr for Quality {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_ascii_lowercase().as_str() {
+            "high" | "h" => Ok(Self::High),
+            "medium" | "m" => Ok(Self::Medium),
+            "low" | "l" => Ok(Self::Low),
+            _ => Err(format!("Invalid quality: {s}")),
+        }
+    }
 }

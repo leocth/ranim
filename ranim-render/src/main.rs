@@ -1,10 +1,22 @@
 use clap::Parser;
 use color_eyre::Result;
+use ranim_render::Quality;
 
+/// Renderer frontend of `ranim`
 #[derive(Parser, Debug)]
+#[clap(author, version, about, long_about = None)]
 struct Args {
-    #[clap(short)]
-    preview: bool
+    /// Toggles preview mode. If set to true, animations will be displayed on a new preview window
+    /// instead of an image or video file.
+    #[clap(short, long)]
+    preview: bool,
+
+    /// The quality of the output image or video in output mode.
+    /// 
+    /// Possible quality options include: High (h/high) for 1920x1080, 60fps;
+    /// Medium (m/medium) for 1280x720, 30fps; Low (l/low) for 864x480, 15fps.
+    #[clap(short, long, default_value_t = Quality::Low)]
+    quality: Quality,
 }
 
 fn main() -> Result<()> {
@@ -12,13 +24,32 @@ fn main() -> Result<()> {
 }
 
 async fn run() -> Result<()> {
+    color_eyre::install()?;
     env_logger::init();
-    let args = Args::parse();
+    
+    let args = dbg!(Args::parse());
+
+    let mut encode_context = {
+        let encoder =
+            AVCodec::find_encoder_by_name(cstr!("png")).context("Failed to find encoder codec")?;
+        let mut encode_context = AVCodecContext::new(&encoder);
+        encode_context.set_bit_rate(400000);
+        encode_context.set_width(width);
+        encode_context.set_height(height);
+        encode_context.set_time_base(ra(1, 60));
+        encode_context.set_framerate(ra(60, 1));
+        encode_context.set_gop_size(10);
+        encode_context.set_max_b_frames(1);
+        encode_context.set_pix_fmt(rsmpeg::ffi::AVPixelFormat_AV_PIX_FMT_RGB24);
+        encode_context.open(None)?;
+        encode_context
+    };
+
 
     if args.preview {
         ranim_render::preview().await
     } else {
-        ranim_render::output().await
+        ranim_render::output(args.quality).await
     }
 }
 

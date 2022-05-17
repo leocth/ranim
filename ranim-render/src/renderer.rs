@@ -1,6 +1,7 @@
 use std::num::NonZeroU32;
 
 use color_eyre::{eyre::eyre, Result};
+use openh264::encoder::Encoder;
 use wgpu::{util::DeviceExt, COPY_BYTES_PER_ROW_ALIGNMENT};
 use winit::{dpi::PhysicalSize, window::Window};
 
@@ -21,6 +22,8 @@ enum RenderTarget {
     Video {
         target: TextureTarget,
         converter: RgbaYuvConverter,
+        encoder: Encoder,
+        video_buffer: Vec<u8>,
     },
 }
 
@@ -223,6 +226,9 @@ impl Renderer {
             usage: wgpu::BufferUsages::INDEX,
         });
 
+        // FFmpeg things 
+        
+
         Ok(Self {
             device,
             queue,
@@ -249,14 +255,14 @@ impl Renderer {
     pub fn update(&mut self) {}
 
     pub async fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
-        let mut encoder = self
+        let mut cmdenc = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("Render Encoder"),
             });
 
         let mut render_pass = |view| {
-            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            let mut render_pass = cmdenc.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Render Pass"),
                 color_attachments: &[wgpu::RenderPassColorAttachment {
                     view,
@@ -287,12 +293,12 @@ impl Renderer {
                     .texture
                     .create_view(&wgpu::TextureViewDescriptor::default());
                 render_pass(&view);
-                self.queue.submit(std::iter::once(encoder.finish()));
+                self.queue.submit(std::iter::once(cmdenc.finish()));
                 output.present();
             }
             RenderTarget::Image { target } => {
                 render_pass(&target.view);
-                texture_target_common(encoder, target, &self.queue, &self.device).await;
+                texture_target_common(cmdenc, target, &self.queue, &self.device).await;
 
                 use image::{ImageBuffer, Rgba};
                 let buffer = ImageBuffer::<Rgba<u8>, _>::from_raw(
@@ -305,10 +311,17 @@ impl Renderer {
 
                 target.output_buffer.unmap();
             }
-            RenderTarget::Video { target, converter } => {
+            RenderTarget::Video {
+                target,
+                converter,
+                encoder,
+                video_buffer,
+            } => {
                 render_pass(&target.view);
-                texture_target_common(encoder, target, &self.queue, &self.device).await;
+                texture_target_common(cmdenc, target, &self.queue, &self.device).await;
                 converter.convert(&target.image_buffer);
+                encoder.encode(converter).unwrap().write_vec(video_buffer);
+
                 target.output_buffer.unmap();
             }
         }
