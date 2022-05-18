@@ -15,6 +15,7 @@ use winit_input_helper::WinitInputHelper;
 
 mod buf;
 mod renderer;
+mod video;
 
 pub async fn preview() -> Result<()> {
     let mut input = WinitInputHelper::new();
@@ -45,14 +46,18 @@ pub async fn preview() -> Result<()> {
                 renderer.update();
                 // TODO: this is cringe
                 let res = pollster::block_on(renderer.render());
-                match res {
-                    Ok(_) => {}
-                    // Reconfigure the surface if lost
-                    Err(wgpu::SurfaceError::Lost) => renderer.resize(renderer.size),
-                    // The system is out of memory, we should probably quit
-                    Err(wgpu::SurfaceError::OutOfMemory) => *control_flow = ControlFlow::Exit,
-                    // All other errors (Outdated, Timeout) should be resolved by the next frame
-                    Err(e) => eprintln!("{e:?}"),
+
+                if let Err(e) = res {
+                    if let Some(e) = e.downcast_ref::<wgpu::SurfaceError>() {
+                        match e {
+                            // Reconfigure the surface if lost
+                            wgpu::SurfaceError::Lost => renderer.resize(renderer.size),
+                            // The system is out of memory, we should probably quit
+                            wgpu::SurfaceError::OutOfMemory => *control_flow = ControlFlow::Exit,
+                            _ => {}
+                        }
+                    }
+                    eprintln!("{e:?}");
                 }
             }
             Event::MainEventsCleared => window.request_redraw(),
@@ -69,6 +74,7 @@ pub async fn output(quality: Quality) -> Result<()> {
 
     renderer.render().await?;
 
+    renderer.finish()?;
     Ok(())
 }
 

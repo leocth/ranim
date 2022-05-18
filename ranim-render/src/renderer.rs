@@ -1,10 +1,11 @@
 use std::num::NonZeroU32;
 
 use color_eyre::{eyre::eyre, Result};
+use cstr::cstr;
 use wgpu::{util::DeviceExt, COPY_BYTES_PER_ROW_ALIGNMENT};
 use winit::{dpi::PhysicalSize, window::Window};
 
-use crate::buf::Vertex;
+use crate::{buf::Vertex, video::Encoder};
 
 pub enum RenderMode<'a> {
     Preview(&'a Window),
@@ -20,7 +21,7 @@ enum RenderTarget {
     },
     Video {
         target: TextureTarget,
-        video_buffer: Vec<u8>,
+        encoder: Encoder,
     },
 }
 
@@ -157,16 +158,19 @@ impl Renderer {
                 (RenderTarget::Window { surface, config }, format)
             }
             // TODO: implement Image mode
-            RenderMode::Output { size } => (
-                // RenderTarget::Video {
-                //     texture: TextureTarget::new(&device, size),
-                //     converter: RgbaYuvConverter::new(size.width as usize, size.height as usize),
-                // },
-                RenderTarget::Image {
-                    target: TextureTarget::new(&device, size),
-                },
-                wgpu::TextureFormat::Rgba8UnormSrgb,
-            ),
+            RenderMode::Output { size } => {
+                let output_video_path = cstr!("out.mp4"); // XXX
+                (
+                    RenderTarget::Video {
+                        target: TextureTarget::new(&device, size),
+                        encoder: Encoder::new(size, output_video_path)?,
+                    },
+                    // RenderTarget::Image {
+                    //     target: TextureTarget::new(&device, size),
+                    // },
+                    wgpu::TextureFormat::Rgba8UnormSrgb,
+                )
+            }
         };
 
         let shader = device.create_shader_module(&wgpu::include_wgsl!("shader.wgsl"));
@@ -223,8 +227,6 @@ impl Renderer {
             usage: wgpu::BufferUsages::INDEX,
         });
 
-        // FFmpeg things
-
         Ok(Self {
             device,
             queue,
@@ -250,7 +252,7 @@ impl Renderer {
 
     pub fn update(&mut self) {}
 
-    pub async fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
+    pub async fn render(&mut self) -> Result<()> {
         let mut cmdenc = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -282,6 +284,35 @@ impl Renderer {
             render_pass.draw_indexed(0..self.num_indices, 0, 0..1);
         };
 
+        async fn texture_target_common(
+            mut encoder: wgpu::CommandEncoder,
+            target: &mut TextureTarget,
+            queue: &wgpu::Queue,
+            device: &wgpu::Device,
+        ) {
+            encoder.copy_texture_to_buffer(
+                wgpu::ImageCopyTexture {
+                    aspect: wgpu::TextureAspect::All,
+                    texture: &target.texture,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d::ZERO,
+                },
+                wgpu::ImageCopyBuffer {
+                    buffer: &target.output_buffer,
+                    layout: wgpu::ImageDataLayout {
+                        offset: 0,
+                        bytes_per_row: NonZeroU32::new(target.bytes_per_row),
+                        rows_per_image: NonZeroU32::new(target.rows_per_image),
+                    },
+                },
+                target.extent,
+            );
+            queue.submit(std::iter::once(encoder.finish()));
+        
+            target.update_image_buffer(device).await;
+        }
+
+
         match &mut self.render_target {
             RenderTarget::Window { surface, .. } => {
                 let output = surface.get_current_texture()?;
@@ -307,47 +338,24 @@ impl Renderer {
 
                 target.output_buffer.unmap();
             }
-            RenderTarget::Video {
-                target,
-                video_buffer,
-            } => {
+            RenderTarget::Video { target, encoder } => {
                 render_pass(&target.view);
                 texture_target_common(cmdenc, target, &self.queue, &self.device).await;
-                
-                // TODO: write to video
-
+                encoder.write_frame(&target.image_buffer);
+                encoder.encode()?;
                 target.output_buffer.unmap();
             }
         }
 
         Ok(())
     }
+
+    pub fn finish(&mut self) -> Result<()> {
+        if let RenderTarget::Video { encoder, .. } = &mut self.render_target {
+            encoder.end()?;
+        }
+        Ok(())
+    }
 }
 
-async fn texture_target_common(
-    mut encoder: wgpu::CommandEncoder,
-    target: &mut TextureTarget,
-    queue: &wgpu::Queue,
-    device: &wgpu::Device,
-) {
-    encoder.copy_texture_to_buffer(
-        wgpu::ImageCopyTexture {
-            aspect: wgpu::TextureAspect::All,
-            texture: &target.texture,
-            mip_level: 0,
-            origin: wgpu::Origin3d::ZERO,
-        },
-        wgpu::ImageCopyBuffer {
-            buffer: &target.output_buffer,
-            layout: wgpu::ImageDataLayout {
-                offset: 0,
-                bytes_per_row: NonZeroU32::new(target.bytes_per_row),
-                rows_per_image: NonZeroU32::new(target.rows_per_image),
-            },
-        },
-        target.extent,
-    );
-    queue.submit(std::iter::once(encoder.finish()));
 
-    target.update_image_buffer(device).await;
-}
