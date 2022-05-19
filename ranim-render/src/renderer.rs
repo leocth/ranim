@@ -4,7 +4,10 @@ use winit::{dpi::PhysicalSize, window::Window};
 use crate::{
     args::Args,
     data::{RenderData, Vertex},
-    output::{image::ImageOutput, Canvas, CanvasBuffer, CanvasSize, Output, OutputBehavior, video::VideoOutput},
+    output::{
+        image::ImageOutput, video::VideoOutput, Canvas, CanvasBuffer, CanvasSize, Output,
+        OutputBehavior,
+    },
 };
 
 pub enum RenderMode<'a> {
@@ -29,6 +32,7 @@ pub struct Renderer {
     render_pipeline: wgpu::RenderPipeline,
     render_target: RenderTarget,
     data: RenderData,
+    pub size: PhysicalSize<u32>,
 }
 
 impl Renderer {
@@ -156,19 +160,20 @@ impl Renderer {
             render_pipeline,
             render_target,
             data,
+            size,
         })
     }
 
     pub fn resize(&mut self, new_size: PhysicalSize<u32>) {
         if new_size.width > 0 && new_size.height > 0 {
-            // TODO: adjust canvas size
+            self.size = new_size;
             match &mut self.render_target {
                 RenderTarget::Window { surface, config } => {
                     config.width = new_size.width;
                     config.height = new_size.height;
                     surface.configure(&self.device, config);
                 }
-                _ => todo!(),
+                RenderTarget::Output { .. } => panic!("Resizing is not supported in output mode"),
             }
         }
     }
