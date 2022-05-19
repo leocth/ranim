@@ -1,4 +1,31 @@
 use bytemuck::{Pod, Zeroable};
+use wgpu::util::DeviceExt;
+
+pub struct RenderData {
+    pub vertex_buffer: wgpu::Buffer,
+    pub index_buffer: wgpu::Buffer,
+    pub num_indices: u32,
+}
+impl RenderData {
+    pub fn new(device: &wgpu::Device) -> Self {
+        let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Vertex Buffer"),
+            contents: bytemuck::cast_slice(VERTICES), // XXX
+            usage: wgpu::BufferUsages::VERTEX,
+        });
+
+        let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Index Buffer"),
+            contents: bytemuck::cast_slice(INDICES), // XXX
+            usage: wgpu::BufferUsages::INDEX,
+        });
+        Self {
+            vertex_buffer,
+            index_buffer,
+            num_indices: INDICES.len() as u32,
+        }
+    }
+}
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Pod, Zeroable)]
@@ -23,7 +50,6 @@ impl Vertex {
         }
     }
 }
-
 
 pub const VERTICES: &[Vertex] = &[
     Vertex {

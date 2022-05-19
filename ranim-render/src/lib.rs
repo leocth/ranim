@@ -1,21 +1,20 @@
 #![warn(clippy::pedantic)]
 #![deny(rust_2018_idioms)]
 
-use std::{fmt::Display, str::FromStr};
-
+use args::Args;
 use color_eyre::Result;
 use renderer::{RenderMode, Renderer};
 use winit::{
-    dpi::PhysicalSize,
     event::{Event, VirtualKeyCode, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
     window::WindowBuilder,
 };
 use winit_input_helper::WinitInputHelper;
 
-mod buf;
-mod renderer;
-mod video;
+pub mod args;
+mod data;
+mod output;
+pub mod renderer;
 
 pub async fn preview() -> Result<()> {
     let mut input = WinitInputHelper::new();
@@ -51,7 +50,8 @@ pub async fn preview() -> Result<()> {
                     if let Some(e) = e.downcast_ref::<wgpu::SurfaceError>() {
                         match e {
                             // Reconfigure the surface if lost
-                            wgpu::SurfaceError::Lost => renderer.resize(renderer.size),
+                            // XXX Fix this
+                            // wgpu::SurfaceError::Lost => renderer.resize(renderer.size),
                             // The system is out of memory, we should probably quit
                             wgpu::SurfaceError::OutOfMemory => *control_flow = ControlFlow::Exit,
                             _ => {}
@@ -66,54 +66,13 @@ pub async fn preview() -> Result<()> {
     });
 }
 
-pub async fn output(quality: Quality) -> Result<()> {
-    let mut renderer = Renderer::new(RenderMode::Output {
-        size: quality.size(),
-    })
-    .await?;
+pub async fn output(args: Args) -> Result<()> {
+    let mut renderer = Renderer::new(RenderMode::Output { args }).await?;
 
-    renderer.render().await?;
+    for _ in 0..1200 {
+        renderer.render().await?;
+    }
 
     renderer.finish()?;
     Ok(())
-}
-
-#[derive(Debug, Clone, Copy)]
-pub enum Quality {
-    High,
-    Medium,
-    Low,
-}
-impl Quality {
-    pub fn size(self) -> PhysicalSize<u32> {
-        match self {
-            Quality::High => PhysicalSize::new(1920, 1080),
-            Quality::Medium => PhysicalSize::new(1280, 720),
-            Quality::Low => PhysicalSize::new(854, 480),
-        }
-    }
-    pub fn frame_rate(self) -> u32 {
-        match self {
-            Quality::High => 60,
-            Quality::Medium => 30,
-            Quality::Low => 15,
-        }
-    }
-}
-impl Display for Quality {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{self:?}")
-    }
-}
-impl FromStr for Quality {
-    type Err = String;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_ascii_lowercase().as_str() {
-            "high" | "h" => Ok(Self::High),
-            "medium" | "m" => Ok(Self::Medium),
-            "low" | "l" => Ok(Self::Low),
-            _ => Err(format!("Invalid quality: {s}")),
-        }
-    }
 }
