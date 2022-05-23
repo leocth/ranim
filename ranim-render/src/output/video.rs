@@ -55,7 +55,7 @@ impl VideoOutput {
         }
 
         let encode_context = {
-            let encoder = AVCodec::find_encoder_by_name(cstr!("h264_nvenc"))
+            let encoder = AVCodec::find_encoder_by_name(cstr!("libx264"))
                 .ok_or_else(|| eyre!("Failed to find encoder codec"))?;
             let mut ctx = AVCodecContext::new(&encoder);
             ctx.set_bit_rate(2500 * 1000); // 2500 kbps
