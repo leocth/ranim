@@ -93,7 +93,7 @@ impl Renderer {
                 let output = if args.single_frame {
                     ImageOutput::new(size, args.output_file).into()
                 } else {
-                    VideoOutput::new(size, args.output_file)?.into()
+                    VideoOutput::new(size, args.quality.frame_rate(), args.output_file)?.into()
                 };
                 let canvas_buf = CanvasBuffer::new(&device, size);
 

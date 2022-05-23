@@ -69,12 +69,17 @@ pub async fn preview(args: Args) -> Result<()> {
 }
 
 pub async fn output(args: Args) -> Result<()> {
+    let fr = args.quality.frame_rate();
     let mut renderer = Renderer::new(RenderMode::Output { args }).await?;
 
-    for i in 0..600 {
-        let period = 120.0;
-        let rot = i as f32 / period * std::f32::consts::TAU;
-        renderer.data.camera.camera.rotation = rot;
+    let t_end = fr * 3;
+    for i in 0..t_end {
+        let t = i as f32 / t_end as f32;
+
+        let translation = (t * 2.0 * std::f32::consts::TAU).sin();
+        let rotation = t * 0.3 * std::f32::consts::TAU;
+        renderer.data.camera.camera.position.y = translation;
+        renderer.data.camera.camera.rotation = rotation;
         renderer.update();
         renderer.render().await?;
     }

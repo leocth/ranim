@@ -6,7 +6,7 @@ use std::{
 };
 
 use crate::canvas::{CanvasBufferView, CanvasSize};
-use color_eyre::{eyre::eyre, Result};
+use color_eyre::Result;
 use cstr::cstr;
 use rsmpeg::{
     avcodec::{AVCodec, AVCodecContext},
@@ -49,25 +49,29 @@ impl VideoOutput {
     }
 }
 impl VideoOutput {
-    pub fn new(size: CanvasSize, mut output_path: PathBuf) -> Result<Self> {
+    pub fn new(size: CanvasSize, frame_rate: u32, mut output_path: PathBuf) -> Result<Self> {
         if output_path.extension().is_none() {
             output_path.set_extension("mp4");
         }
 
         let encode_context = {
             let encoder = AVCodec::find_encoder_by_name(cstr!("libx264"))
-                .ok_or_else(|| eyre!("Failed to find encoder codec"))?;
+                .expect("Failed to find encoder codec");
             let mut ctx = AVCodecContext::new(&encoder);
-            ctx.set_bit_rate(2500 * 1000); // 2500 kbps
             ctx.set_width(size.size.width as i32);
             ctx.set_height(size.size.height as i32);
-            ctx.set_time_base(ra(1, 60));
-            ctx.set_framerate(ra(60, 1));
+            ctx.set_time_base(ra(1, frame_rate as i32));
+            ctx.set_framerate(ra(frame_rate as i32, 1));
             ctx.set_gop_size(10);
             ctx.set_max_b_frames(1);
             ctx.set_pix_fmt(rsmpeg::ffi::AVPixelFormat_AV_PIX_FMT_YUV420P);
-            let dict = AVDictionary::from_string(cstr!("profile=high"), cstr!("="), cstr!(";"), 0)
-                .expect("Failed to parse dictionary string");
+            let dict = AVDictionary::from_string(
+                cstr!("crf=28,profile=high,preset=fast"),
+                cstr!("="),
+                cstr!(","),
+                0,
+            )
+            .expect("Failed to parse dictionary string");
             ctx.open(Some(dict))?;
             ctx
         };

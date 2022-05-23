@@ -1,3 +1,8 @@
 /target
 Cargo.lock
 **/media
+
+# flamegraph
+perf.data
+perf.data.old
+flamegraph.svg
