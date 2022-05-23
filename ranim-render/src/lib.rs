@@ -1,3 +1,6 @@
+#![feature(portable_simd)]
+#![feature(array_chunks)]
+
 #![warn(clippy::pedantic)]
 #![deny(rust_2018_idioms)]
 
@@ -12,16 +15,20 @@ use winit::{
 use winit_input_helper::WinitInputHelper;
 
 pub mod args;
+mod camera;
+mod canvas;
 mod data;
 mod output;
 pub mod renderer;
 
-pub async fn preview() -> Result<()> {
+pub async fn preview(args: Args) -> Result<()> {
     let mut input = WinitInputHelper::new();
 
     let event_loop = EventLoop::new();
-    let window = WindowBuilder::new().build(&event_loop).unwrap();
-    let mut renderer = Renderer::new(RenderMode::Preview(&window)).await?;
+    let window = WindowBuilder::new()
+        .with_inner_size(args.quality.size())
+        .build(&event_loop)?;
+    let mut renderer = Renderer::new(RenderMode::Preview { window: &window }).await?;
 
     event_loop.run(move |event, _, control_flow| {
         if input.update(&event) {
@@ -69,7 +76,11 @@ pub async fn preview() -> Result<()> {
 pub async fn output(args: Args) -> Result<()> {
     let mut renderer = Renderer::new(RenderMode::Output { args }).await?;
 
-    for _ in 0..1200 {
+    for i in 0..600 {
+        let period = 120.0;
+        let rot = i as f32 / period * std::f32::consts::TAU;
+        renderer.data.camera.camera.rotation = rot;
+        renderer.update();
         renderer.render().await?;
     }
 

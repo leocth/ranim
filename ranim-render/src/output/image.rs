@@ -2,7 +2,8 @@ use std::path::PathBuf;
 
 use color_eyre::Result;
 
-use crate::output::{CanvasBufferView, CanvasSize, PIXEL_STRIDE};
+use crate::canvas::{CanvasBufferView, CanvasSize};
+use crate::output::{PIXEL_STRIDE};
 
 use super::OutputBehavior;
 

@@ -3,15 +3,13 @@ use winit::{dpi::PhysicalSize, window::Window};
 
 use crate::{
     args::Args,
-    data::{RenderData, Vertex},
-    output::{
-        image::ImageOutput, video::VideoOutput, Canvas, CanvasBuffer, CanvasSize, Output,
-        OutputBehavior,
-    },
+    canvas::{Canvas, CanvasBuffer, CanvasSize},
+    data::{RenderData, Vertex, InstanceRaw},
+    output::{image::ImageOutput, video::VideoOutput, Output, OutputBehavior},
 };
 
 pub enum RenderMode<'a> {
-    Preview(&'a Window),
+    Preview { window: &'a Window },
     Output { args: Args },
 }
 enum RenderTarget {
@@ -31,7 +29,7 @@ pub struct Renderer {
     queue: wgpu::Queue,
     render_pipeline: wgpu::RenderPipeline,
     render_target: RenderTarget,
-    data: RenderData,
+    pub data: RenderData,
     pub size: PhysicalSize<u32>,
 }
 
@@ -42,7 +40,7 @@ impl Renderer {
         let instance = wgpu::Instance::new(wgpu::Backends::all());
 
         let (size, surface) = match &render_mode {
-            RenderMode::Preview(window) => {
+            RenderMode::Preview { window } => {
                 let size = window.inner_size();
                 let surface = unsafe { instance.create_surface(window) };
 
@@ -64,7 +62,7 @@ impl Renderer {
             .await?;
 
         let (render_target, format) = match render_mode {
-            RenderMode::Preview(_) => {
+            RenderMode::Preview { .. } => {
                 let surface = surface.unwrap();
                 let format = surface.get_preferred_format(&adapter).unwrap();
                 let config = wgpu::SurfaceConfiguration {
@@ -110,11 +108,13 @@ impl Renderer {
             }
         };
 
+        let data = RenderData::new(&device, size);
+
         let shader = device.create_shader_module(&wgpu::include_wgsl!("shader.wgsl"));
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline Layout"),
-                bind_group_layouts: &[],
+                bind_group_layouts: &[&data.camera.bind_group_layout],
                 push_constant_ranges: &[],
             });
         let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -123,7 +123,7 @@ impl Renderer {
             vertex: wgpu::VertexState {
                 module: &shader,
                 entry_point: "vertex",
-                buffers: &[Vertex::desc()],
+                buffers: &[Vertex::desc(), InstanceRaw::desc()],
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
@@ -152,8 +152,6 @@ impl Renderer {
             multiview: None,
         });
 
-        let data = RenderData::new(&device);
-
         Ok(Self {
             device,
             queue,
@@ -172,13 +170,16 @@ impl Renderer {
                     config.width = new_size.width;
                     config.height = new_size.height;
                     surface.configure(&self.device, config);
+                    self.data.camera.camera.resize(new_size);
                 }
                 RenderTarget::Output { .. } => panic!("Resizing is not supported in output mode"),
             }
         }
     }
 
-    pub fn update(&mut self) {}
+    pub fn update(&mut self) {
+        self.data.camera.update(&self.queue);
+    }
 
     pub async fn render(&mut self) -> Result<()> {
         let encoder = self
@@ -216,46 +217,6 @@ impl Renderer {
                 canvas_buf.unmap(view);
             }
         };
-
-        // match &mut self.render_target {
-        //     RenderTarget::Window { surface, .. } => {
-        //         let output = surface.get_current_texture()?;
-        //         let view = output
-        //             .texture
-        //             .create_view(&wgpu::TextureViewDescriptor::default());
-        //         render_pass(&view);
-        //         self.queue.submit(std::iter::once(encoder.finish()));
-        //         output.present();
-        //     }
-        //     RenderTarget::Image { canvas: target } => {
-        //         render_pass(&target.view);
-        //         texture_target_common(encoder, target, &self.queue, &self.device).await;
-
-        //         // write_frame
-        //         use image::{ImageBuffer, Rgba};
-        //         let buffer = ImageBuffer::<Rgba<u8>, _>::from_raw(
-        //             target.extent.width,
-        //             target.extent.height,
-        //             target.image_buffer.as_slice(),
-        //         )
-        //         .unwrap();
-        //         // encode
-        //         buffer.save("image.png").unwrap();
-
-        //         target.buffer.unmap();
-        //     }
-        //     RenderTarget::Video {
-        //         canvas: target,
-        //         encoder,
-        //     } => {
-        //         render_pass(&target.view);
-        //         texture_target_common(encoder, target, &self.queue, &self.device).await;
-        //         encoder.write_frame(&target.image_buffer);
-        //         encoder.encode()?;
-        //         target.buffer.unmap();
-        //     }
-        // }
-
         Ok(())
     }
 
