@@ -28,6 +28,8 @@ pub struct Args {
 
 #[derive(Debug, Clone, Copy)]
 pub enum Quality {
+    FourK,
+    Production,
     High,
     Medium,
     Low,
@@ -35,6 +37,8 @@ pub enum Quality {
 impl Quality {
     pub fn size(self) -> PhysicalSize<u32> {
         match self {
+            Quality::FourK => PhysicalSize::new(3840, 2160),
+            Quality::Production => PhysicalSize::new(2560, 1440),
             Quality::High => PhysicalSize::new(1920, 1080),
             Quality::Medium => PhysicalSize::new(1280, 720),
             Quality::Low => PhysicalSize::new(854, 480),
@@ -42,7 +46,7 @@ impl Quality {
     }
     pub fn frame_rate(self) -> u32 {
         match self {
-            Quality::High => 60,
+            Quality::High | Quality::Production | Quality::FourK => 60,
             Quality::Medium => 30,
             Quality::Low => 15,
         }
@@ -58,9 +62,11 @@ impl FromStr for Quality {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_ascii_lowercase().as_str() {
-            "high" | "h" => Ok(Self::High),
-            "medium" | "m" => Ok(Self::Medium),
-            "low" | "l" => Ok(Self::Low),
+            "high" | "hi" | "h" => Ok(Self::High),
+            "medium" | "mid"| "m" => Ok(Self::Medium),
+            "low" | "lo" | "l" => Ok(Self::Low),
+            "production" | "prod" | "p" => Ok(Self::Production),
+            "fourk" | "4k" | "k" => Ok(Self::FourK),
             _ => Err(format!("Invalid quality: {s}")),
         }
     }
