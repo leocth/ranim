@@ -1,5 +1,5 @@
 use bytemuck::{Pod, Zeroable};
-use glam::{Vec3, Quat, Mat4};
+use glam::{Mat4, Quat, Vec3};
 use wgpu::util::DeviceExt;
 use winit::dpi::PhysicalSize;
 
@@ -28,22 +28,24 @@ impl RenderData {
         });
         let camera = CameraGroup::new(&device, size);
 
-        let instances: Vec<_> = (0..NUM_INSTANCES_PER_ROW).flat_map(|z| {
-            (0..NUM_INSTANCES_PER_ROW).map(move |x| {
-                let position = Vec3::new(x as f32 - INSTANCE_DISPLACEMENT, z as f32 - INSTANCE_DISPLACEMENT, 0.0);
-                let rotation = Quat::IDENTITY;
-                Instance {
-                    position, rotation,
-                }.to_raw()
+        let instances: Vec<_> = (0..NUM_INSTANCES_PER_ROW)
+            .flat_map(|z| {
+                (0..NUM_INSTANCES_PER_ROW).map(move |x| {
+                    let position = Vec3::new(
+                        x as f32 - INSTANCE_DISPLACEMENT,
+                        z as f32 - INSTANCE_DISPLACEMENT,
+                        0.0,
+                    );
+                    let rotation = Quat::IDENTITY;
+                    Instance { position, rotation }.to_raw()
+                })
             })
-        }).collect();
-        let instance_buffer = device.create_buffer_init(
-            &wgpu::util::BufferInitDescriptor {
-                label: Some("Instance Buffer"),
-                contents: bytemuck::cast_slice(&instances),
-                usage: wgpu::BufferUsages::VERTEX,
-            }
-        );        
+            .collect();
+        let instance_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Instance Buffer"),
+            contents: bytemuck::cast_slice(&instances),
+            usage: wgpu::BufferUsages::VERTEX,
+        });
 
         Self {
             vertex_buffer,
@@ -51,7 +53,7 @@ impl RenderData {
             num_indices: INDICES.len() as u32,
             camera,
             instances,
-            instance_buffer
+            instance_buffer,
         }
     }
 }

@@ -1,6 +1,5 @@
 #![feature(portable_simd)]
 #![feature(array_chunks)]
-
 #![warn(clippy::pedantic)]
 #![deny(rust_2018_idioms)]
 
