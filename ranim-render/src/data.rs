@@ -26,7 +26,7 @@ impl RenderData {
             contents: bytemuck::cast_slice(INDICES), // XXX
             usage: wgpu::BufferUsages::INDEX,
         });
-        let camera = CameraGroup::new(&device, size);
+        let camera = CameraGroup::new(device, size);
 
         let instances: Vec<_> = (0..NUM_INSTANCES_PER_ROW)
             .flat_map(|z| {

@@ -212,8 +212,8 @@ impl Renderer {
                 canvas.copy_to_output(texture, canvas_buf);
                 canvas.finish(&self.queue);
 
-                let mut view = canvas_buf.view(&self.device).await;
-                output.encode_frame(&mut view)?;
+                let view = canvas_buf.view(&self.device).await;
+                output.encode_frame(&view)?;
                 canvas_buf.unmap(view);
             }
         };

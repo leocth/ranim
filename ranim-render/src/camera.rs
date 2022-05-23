@@ -103,3 +103,9 @@ impl CameraUniform {
         self.view_proj = camera.build_view_projection_matrix().to_cols_array_2d();
     }
 }
+
+impl Default for CameraUniform {
+    fn default() -> Self {
+        Self::new()
+    }
+}

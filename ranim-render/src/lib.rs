@@ -1,6 +1,5 @@
 #![feature(portable_simd)]
 #![feature(array_chunks)]
-#![warn(clippy::pedantic)]
 #![deny(rust_2018_idioms)]
 
 use args::Args;
@@ -30,11 +29,9 @@ pub async fn preview(args: Args) -> Result<()> {
     let mut renderer = Renderer::new(RenderMode::Preview { window: &window }).await?;
 
     event_loop.run(move |event, _, control_flow| {
-        if input.update(&event) {
-            if input.key_released(VirtualKeyCode::Escape) || input.quit() {
-                *control_flow = ControlFlow::Exit;
-                return;
-            }
+        if input.update(&event) && (input.key_released(VirtualKeyCode::Escape) || input.quit()) {
+            *control_flow = ControlFlow::Exit;
+            return;
         }
         match event {
             Event::WindowEvent {
@@ -56,8 +53,7 @@ pub async fn preview(args: Args) -> Result<()> {
                     if let Some(e) = e.downcast_ref::<wgpu::SurfaceError>() {
                         match e {
                             // Reconfigure the surface if lost
-                            // XXX Fix this
-                            // wgpu::SurfaceError::Lost => renderer.resize(renderer.size),
+                            wgpu::SurfaceError::Lost => renderer.resize(renderer.size),
                             // The system is out of memory, we should probably quit
                             wgpu::SurfaceError::OutOfMemory => *control_flow = ControlFlow::Exit,
                             _ => {}
