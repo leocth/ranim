@@ -93,7 +93,7 @@ impl Renderer {
                 let output = if args.single_frame {
                     ImageOutput::new(size, args.output_file).into()
                 } else {
-                    VideoOutput::new(size, args.quality.frame_rate(), args.output_file)?.into()
+                    VideoOutput::new(args)?.into()
                 };
                 let canvas_buf = CanvasBuffer::new(&device, size);
 
@@ -227,8 +227,6 @@ impl Renderer {
     }
 
     pub fn finish(&mut self) -> Result<()> {
-        // TODO: images, write to file; videos, end encoding and write to file
-
         if let RenderTarget::Output { output, .. } = &mut self.render_target {
             output.conclude()?;
         }

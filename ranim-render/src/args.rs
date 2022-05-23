@@ -19,11 +19,14 @@ pub struct Args {
     #[clap(short, long, default_value_t = Quality::Low)]
     pub quality: Quality,
 
-    #[clap(long, default_value = "media/output")]
+    #[clap(short, long, default_value = "media/output")]
     pub output_file: PathBuf,
 
     #[clap(long)]
     pub single_frame: bool,
+
+    #[clap(long)]
+    pub no_output: bool
 }
 
 #[derive(Debug, Clone, Copy)]

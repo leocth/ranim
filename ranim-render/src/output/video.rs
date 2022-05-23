@@ -1,11 +1,13 @@
 use std::{
     ffi::CString,
     ops::{Div, Index, IndexMut, Mul},
-    path::PathBuf,
     simd::{f32x4, u8x4},
 };
 
-use crate::canvas::{CanvasBufferView, CanvasSize};
+use crate::{
+    args::Args,
+    canvas::{CanvasBufferView, CanvasSize},
+};
 use color_eyre::Result;
 use cstr::cstr;
 use rsmpeg::{
@@ -20,42 +22,47 @@ use super::{OutputBehavior, PIXEL_STRIDE};
 pub struct VideoOutput {
     encode_context: AVCodecContext,
     frame: AVFrame,
-    output_format_context: AVFormatContextOutput,
+    output_format_context: Option<AVFormatContextOutput>,
 
     size: CanvasSize,
     frame_cnt: i64,
 }
 impl VideoOutput {
     fn write(&mut self) -> Result<()> {
-        loop {
-            let mut packet = match self.encode_context.receive_packet() {
-                Ok(packet) => packet,
-                Err(RsmpegError::EncoderDrainError) | Err(RsmpegError::EncoderFlushedError) => {
-                    break
-                }
-                Err(e) => return Err(e.into()),
-            };
-            packet.rescale_ts(
-                self.encode_context.time_base,
-                self.output_format_context
-                    .streams()
-                    .get(0)
-                    .unwrap()
-                    .time_base,
-            );
-            self.output_format_context.write_frame(&mut packet)?;
+        if let Some(ofctx) = &mut self.output_format_context {
+            loop {
+                let mut packet = match self.encode_context.receive_packet() {
+                    Ok(packet) => packet,
+                    Err(RsmpegError::EncoderDrainError) | Err(RsmpegError::EncoderFlushedError) => {
+                        break
+                    }
+                    Err(e) => return Err(e.into()),
+                };
+                packet.rescale_ts(
+                    self.encode_context.time_base,
+                    ofctx.streams().get(0).unwrap().time_base,
+                );
+                ofctx.write_frame(&mut packet)?;
+            }
         }
         Ok(())
     }
 }
 impl VideoOutput {
-    pub fn new(size: CanvasSize, frame_rate: u32, mut output_path: PathBuf) -> Result<Self> {
-        if output_path.extension().is_none() {
-            output_path.set_extension("mp4");
+    pub fn new(mut args: Args) -> Result<Self> {
+        let size = CanvasSize::new(args.quality.size());
+        let frame_rate = args.quality.frame_rate();
+        let output_file = &mut args.output_file;
+        
+        if output_file.extension().is_none() {
+            output_file.set_extension("mp4");
         }
 
         let encode_context = {
-            let encoder = AVCodec::find_encoder_by_name(cstr!("libx264"))
+            let encoder = AVCodec::find_encoder_by_name(cstr!("h264_nvenc"))
+                .or_else(|| 
+                    AVCodec::find_encoder_by_name(cstr!("libx264"))
+                )
                 .expect("Failed to find encoder codec");
             let mut ctx = AVCodecContext::new(&encoder);
             ctx.set_width(size.size.width as i32);
@@ -82,8 +89,10 @@ impl VideoOutput {
         frame.set_height(encode_context.height);
         frame.alloc_buffer()?;
 
-        let output_format_context = {
-            let output_path = CString::new(output_path.to_string_lossy().as_ref()).unwrap();
+        let output_format_context = if args.no_output {
+            None
+        } else {
+            let output_path = CString::new(output_file.to_string_lossy().as_ref()).unwrap();
             let mut output_format_context = AVFormatContextOutput::create(&output_path, None)?;
             {
                 let mut stream = output_format_context.new_stream();
@@ -93,7 +102,7 @@ impl VideoOutput {
             }
             output_format_context.dump(0, &output_path)?;
             output_format_context.write_header()?;
-            output_format_context
+            Some(output_format_context)
         };
         Ok(Self {
             encode_context,
@@ -133,7 +142,9 @@ impl OutputBehavior for VideoOutput {
     fn conclude(&mut self) -> Result<()> {
         self.encode_context.send_frame(None)?;
         self.write()?;
-        self.output_format_context.write_trailer()?;
+        if let Some(ofctx) = &mut self.output_format_context {
+            ofctx.write_trailer()?;
+        }
         Ok(())
     }
 }
