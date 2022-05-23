@@ -162,6 +162,12 @@ impl Renderer {
         })
     }
 
+    pub fn reconfigure(&mut self) {
+        if let RenderTarget::Window { surface, config } = &mut self.render_target {
+            surface.configure(&self.device, config);
+        }
+    }
+
     pub fn resize(&mut self, new_size: PhysicalSize<u32>) {
         if new_size.width > 0 && new_size.height > 0 {
             self.size = new_size;
@@ -178,7 +184,7 @@ impl Renderer {
     }
 
     pub fn update(&mut self) {
-        self.data.camera.update(&self.queue);
+        self.data.update(&self.queue);
     }
 
     pub async fn render(&mut self) -> Result<()> {

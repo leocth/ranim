@@ -56,6 +56,9 @@ impl RenderData {
             instance_buffer,
         }
     }
+    pub fn update(&mut self, queue: &wgpu::Queue) {
+        self.camera.update(queue)
+    }
 }
 const NUM_INSTANCES_PER_ROW: u32 = 5;
 const INSTANCE_DISPLACEMENT: f32 = NUM_INSTANCES_PER_ROW as f32 * 0.5;

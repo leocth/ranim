@@ -53,7 +53,7 @@ pub async fn preview(args: Args) -> Result<()> {
                     if let Some(e) = e.downcast_ref::<wgpu::SurfaceError>() {
                         match e {
                             // Reconfigure the surface if lost
-                            wgpu::SurfaceError::Lost => renderer.resize(renderer.size),
+                            wgpu::SurfaceError::Lost => renderer.reconfigure(),
                             // The system is out of memory, we should probably quit
                             wgpu::SurfaceError::OutOfMemory => *control_flow = ControlFlow::Exit,
                             _ => {}
