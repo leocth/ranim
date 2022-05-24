@@ -14,11 +14,12 @@ struct InstanceInput {
     [[location(6)]] model_matrix_1: vec4<f32>;
     [[location(7)]] model_matrix_2: vec4<f32>;
     [[location(8)]] model_matrix_3: vec4<f32>;
+    [[location(9)]] color: vec4<f32>;
 };
 
 struct VertexOutput {
     [[builtin(position)]] clip_position: vec4<f32>;
-    [[location(0)]] color: vec3<f32>;
+    [[location(0)]] color: vec4<f32>;
 };
 
 [[stage(vertex)]]
@@ -34,7 +35,7 @@ fn vertex(
     );
 
     var out: VertexOutput;
-    out.color = model.color;
+    out.color = instance.color * vec4<f32>(model.color, 1.0);
     // the good ole MVP matrix.
     out.clip_position = camera.view_proj * model_matrix * vec4<f32>(model.position, 1.0);
     return out;
@@ -44,5 +45,5 @@ fn vertex(
 
 [[stage(fragment)]]
 fn fragment(in: VertexOutput) -> [[location(0)]] vec4<f32> {
-    return vec4<f32>(in.color, 1.0);
+    return in.color;
 }

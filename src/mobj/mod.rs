@@ -1,4 +1,4 @@
-pub mod geometry;
+pub mod polygon;
 pub mod vectorized;
 
 pub trait MObject {

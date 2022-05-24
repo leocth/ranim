@@ -9,21 +9,17 @@ pub struct DynamicBuffer<T> {
     pub data: Vec<T>,
     pub raw: Vec<u8>,
     pub buffer: wgpu::Buffer,
-    pub size: usize,
+    label: wgpu::Label<'static>,
+    usage: wgpu::BufferUsages,
 }
 impl<T: Pod> DynamicBuffer<T> {
-    pub fn from_data(
+    pub fn new(
         device: &wgpu::Device,
-        data: Vec<T>,
-        label: wgpu::Label<'_>,
+        label: wgpu::Label<'static>,
         usage: wgpu::BufferUsages,
     ) -> Self {
-        let cast_data = bytemuck::cast_slice(&data);
-        let size = util::pad_to_bytes_per_row_alignment(cast_data.len());
-
-        let mut raw = vec![0u8; size];
-        raw[..cast_data.len()].copy_from_slice(cast_data);
-        raw[cast_data.len()..].fill(0);
+        let data = vec![];
+        let raw = vec![0u8; wgpu::COPY_BYTES_PER_ROW_ALIGNMENT as usize];
 
         let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label,
@@ -34,19 +30,44 @@ impl<T: Pod> DynamicBuffer<T> {
             data,
             raw,
             buffer,
-            size,
+            label,
+            usage
         }
     }
-    pub fn update(&mut self, queue: &wgpu::Queue) {
-        let cast_data = bytemuck::cast_slice(&self.data);
-        self.raw[..cast_data.len()].copy_from_slice(cast_data);
-        self.raw[cast_data.len()..].fill(0);
-        queue.write_buffer(&self.buffer, 0, &self.raw);
-    }
+
+    // Vector operations
     pub fn len(&self) -> usize {
         self.data.len()
     }
+    pub fn push(&mut self, t: T) {
+        self.data.push(t)
+    }
 
+    // Buffer operations
+    pub fn size(&self) -> usize {
+        self.raw.len()
+    }
+    pub fn update(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
+        let cast_data = bytemuck::cast_slice(&self.data);
+        let cast_len = cast_data.len();
+        if cast_len > self.raw.len() {
+            // resize
+            let size = (self.raw.len() * 2).min(cast_len);
+            let size = util::pad_to_bytes_per_row_alignment(size);
+
+            self.raw = vec![0; size];
+            self.raw[..cast_len].copy_from_slice(cast_data);
+            self.buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: self.label,
+                contents: &self.raw,
+                usage: self.usage | wgpu::BufferUsages::COPY_DST,
+            });
+        } else {
+            self.raw[..cast_len].copy_from_slice(cast_data);
+            self.raw[cast_len..].fill(0);
+        }
+        queue.write_buffer(&self.buffer, 0, &self.raw);
+    }
     pub fn slice<S>(&self, bounds: S) -> wgpu::BufferSlice<'_>
     where
         S: RangeBounds<wgpu::BufferAddress>,
@@ -72,58 +93,8 @@ where
         &mut self.data[index]
     }
 }
-
-pub struct MappedDynamicBuffer<T, U> {
-    buf: DynamicBuffer<U>,
-    _phan: PhantomData<T>,
-}
-impl<T, U> MappedDynamicBuffer<T, U>
-where
-    U: Pod + From<T>,
-{
-    pub fn from_data(
-        device: &wgpu::Device,
-        data: Vec<T>,
-        label: wgpu::Label<'_>,
-        usage: wgpu::BufferUsages,
-    ) -> Self {
-        let data: Vec<_> = data.into_iter().map(U::from).collect();
-        let buf = DynamicBuffer::from_data(device, data, label, usage);
-
-        Self {
-            buf,
-            _phan: PhantomData,
-        }
-    }
-    pub fn update(&mut self, queue: &wgpu::Queue) {
-        self.buf.update(queue);
-    }
-    pub fn len(&self) -> usize {
-        self.buf.len()
-    }
-
-    pub fn slice<S>(&self, bounds: S) -> wgpu::BufferSlice<'_>
-    where
-        S: RangeBounds<wgpu::BufferAddress>,
-    {
-        self.buf.slice(bounds)
-    }
-}
-impl<T, U, I> std::ops::Index<I> for MappedDynamicBuffer<T, U>
-where
-    I: SliceIndex<[U]>,
-{
-    type Output = <I as SliceIndex<[U]>>::Output;
-
-    fn index(&self, index: I) -> &Self::Output {
-        &self.buf.data[index]
-    }
-}
-impl<T, U, I> std::ops::IndexMut<I> for MappedDynamicBuffer<T, U>
-where
-    I: SliceIndex<[U]>,
-{
-    fn index_mut(&mut self, index: I) -> &mut Self::Output {
-        &mut self.buf.data[index]
+impl<T> Extend<T> for DynamicBuffer<T> {
+    fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I) {
+        self.data.extend(iter)
     }
 }

@@ -1,5 +1,5 @@
 use bytemuck::{Pod, Zeroable};
-use glam::{Vec3, Quat, Mat4};
+use glam::{Mat4, Quat, Vec3, Vec4};
 
 macro_rules! vertex_attr_array {
     ($($t:tt)*) => {{
@@ -25,29 +25,29 @@ impl Vertex {
         }
     }
 }
-pub const VERTICES: &[Vertex] = &[
-    Vertex {
-        position: [0.5, -0.5, 0.0],
-        color: [0.0, 0.0, 0.0],
-    },
-    Vertex {
-        position: [-0.5, -0.5, 0.0],
-        color: [0.0, 0.0, 1.0],
-    },
-    Vertex {
-        position: [0.0, 0.5, 0.0],
-        color: [1.0, 0.0, 0.0],
-    },
-];
 
+#[derive(Copy, Clone)]
 pub struct Instance {
     pub position: Vec3,
     pub rotation: Quat,
+    pub scale: Vec3,
+    pub color: Vec4,
+}
+impl Default for Instance {
+    fn default() -> Self {
+        Self {
+            position: Vec3::ZERO,
+            rotation: Quat::IDENTITY,
+            scale: Vec3::ONE,
+            color: Vec4::ONE,
+        }
+    }
 }
 #[repr(C)]
 #[derive(Copy, Clone, Pod, Zeroable)]
 pub struct InstanceRaw {
     pub model: [[f32; 4]; 4],
+    pub color: [f32; 4],
 }
 impl InstanceRaw {
     pub fn desc<'a>() -> wgpu::VertexBufferLayout<'a> {
@@ -59,6 +59,7 @@ impl InstanceRaw {
                 6 => Float32x4,
                 7 => Float32x4,
                 8 => Float32x4,
+                9 => Float32x4,
             ],
         }
     }
@@ -66,8 +67,9 @@ impl InstanceRaw {
 impl From<Instance> for InstanceRaw {
     fn from(ins: Instance) -> Self {
         Self {
-            model: Mat4::from_rotation_translation(ins.rotation, ins.position).to_cols_array_2d(),
+            model: Mat4::from_scale_rotation_translation(ins.scale, ins.rotation, ins.position)
+                .to_cols_array_2d(),
+            color: ins.color.into()
         }
     }
 }
-pub const INDICES: &[u16] = &[2, 1, 0];

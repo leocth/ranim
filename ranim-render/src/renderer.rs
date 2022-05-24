@@ -135,7 +135,7 @@ impl Renderer {
                 }],
             }),
             primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::TriangleList,
+                topology: wgpu::PrimitiveTopology::TriangleStrip,
                 strip_index_format: None,
                 front_face: wgpu::FrontFace::Ccw,
                 cull_mode: Some(wgpu::Face::Back),
@@ -184,7 +184,7 @@ impl Renderer {
     }
 
     pub fn update(&mut self) {
-        self.data.update(&self.queue);
+        self.data.update(&self.device, &self.queue);
     }
 
     pub async fn render(&mut self) -> Result<()> {
@@ -218,6 +218,8 @@ impl Renderer {
                 canvas.copy_to_output(texture, canvas_buf);
                 canvas.finish(&self.queue);
 
+                // TODO: convert to YUV here if outputting to video
+                
                 let view = canvas_buf.view(&self.device).await;
                 output.encode_frame(&view)?;
                 canvas_buf.unmap(view);

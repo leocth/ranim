@@ -1,8 +1,12 @@
 use clap::Parser;
 use color_eyre::Result;
+use ranim::prelude::Scene;
 use ranim_render::args::Args;
 
 fn main() -> Result<()> {
+    let scene = Scene::new();
+    
+
     pollster::block_on(run())
 }
 
