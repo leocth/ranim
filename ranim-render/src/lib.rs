@@ -18,6 +18,7 @@ mod canvas;
 mod data;
 mod output;
 pub mod renderer;
+mod util;
 
 pub async fn preview(args: Args) -> Result<()> {
     let mut input = WinitInputHelper::new();
@@ -69,6 +70,7 @@ pub async fn preview(args: Args) -> Result<()> {
 }
 
 pub async fn output(args: Args) -> Result<()> {
+    use std::f32::consts::*;
     let fr = args.quality.frame_rate();
     let mut renderer = Renderer::new(RenderMode::Output { args }).await?;
 
@@ -76,8 +78,11 @@ pub async fn output(args: Args) -> Result<()> {
     for i in 0..t_end {
         let t = i as f32 / t_end as f32;
 
-        let translation = (t * 2.0 * std::f32::consts::TAU).sin();
-        let rotation = t * 0.3 * std::f32::consts::TAU;
+        renderer.data.vertices[0].position[0] = 0.4 + 0.25 * (t * 5.0 * TAU).sin();
+        renderer.data.vertices[1].position[0] = -0.4 + -0.25 * (t * 5.0 * TAU).sin();
+        renderer.data.vertices[2].position[1] = 0.9 + 0.4 * (t * 5.0 * TAU).cos();
+        let translation = (t * 2.0 * TAU).sin();
+        let rotation = t * 0.7 * TAU;
         renderer.data.camera.camera.position.y = translation;
         renderer.data.camera.camera.rotation = rotation;
         renderer.update();

@@ -31,11 +31,11 @@ impl Canvas {
 
         render_pass.set_pipeline(pipeline);
         render_pass.set_bind_group(0, &data.camera.bind_group, &[]);
-        render_pass.set_vertex_buffer(0, data.vertex_buffer.slice(..));
-        render_pass.set_vertex_buffer(1, data.instance_buffer.slice(..));
-        render_pass.set_index_buffer(data.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+        render_pass.set_vertex_buffer(0, data.vertices.slice(..));
+        render_pass.set_vertex_buffer(1, data.instances.slice(..));
+        render_pass.set_index_buffer(data.indices.slice(..), wgpu::IndexFormat::Uint16);
 
-        render_pass.draw_indexed(0..data.num_indices, 0, 0..data.instances.len() as u32);
+        render_pass.draw_indexed(0..data.indices.len() as u32, 0, 0..data.instances.len() as u32);
     }
 
     pub fn copy_to_output(&mut self, src: &wgpu::Texture, dst: &CanvasBuffer) {

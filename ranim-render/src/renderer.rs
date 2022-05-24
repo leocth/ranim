@@ -4,7 +4,7 @@ use winit::{dpi::PhysicalSize, window::Window};
 use crate::{
     args::Args,
     canvas::{Canvas, CanvasBuffer, CanvasSize},
-    data::{InstanceRaw, RenderData, Vertex},
+    data::{RenderData, types::{InstanceRaw, Vertex}},
     output::{image::ImageOutput, video::VideoOutput, Output, OutputBehavior},
 };
 
