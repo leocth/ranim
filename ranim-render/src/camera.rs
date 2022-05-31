@@ -3,7 +3,8 @@ use glam::{
     vec3,
 };
 use wgpu::util::DeviceExt;
-use winit::dpi::PhysicalSize;
+
+use crate::{util::Size, Renderer};
 
 pub struct Camera2D {
     pub position: Vec3,
@@ -13,7 +14,7 @@ pub struct Camera2D {
     pub aspect: f32,
 }
 impl Camera2D {
-    pub fn new(size: PhysicalSize<u32>) -> Self {
+    pub fn new(size: Size) -> Self {
         let mut cam = Self {
             position: Vec3::ZERO,
             rotation: 0.0,
@@ -29,7 +30,7 @@ impl Camera2D {
         let scale = Mat4::from_scale(vec3(1.0, self.aspect, 1.0) * self.scale);
         position * scale * rotation
     }
-    pub fn resize(&mut self, new_size: PhysicalSize<u32>) {
+    pub fn resize(&mut self, new_size: Size) {
         self.aspect = new_size.width as f32 / new_size.height as f32;
     }
 }
@@ -42,38 +43,45 @@ pub struct CameraGroup {
     pub bind_group_layout: wgpu::BindGroupLayout,
 }
 impl CameraGroup {
-    pub fn new(device: &wgpu::Device, size: PhysicalSize<u32>) -> Self {
-        let camera = Camera2D::new(size);
+    pub fn new(renderer: &Renderer) -> Self {
+        let camera = Camera2D::new(renderer.size);
 
         let mut uniform = CameraUniform::new();
         uniform.update_view_proj(&camera);
 
-        let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Camera Buffer"),
-            contents: bytemuck::cast_slice(&[uniform]),
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-        });
-        let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::VERTEX,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
-                },
-                count: None,
-            }],
-            label: Some("camera_bind_group_layout"),
-        });
-        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            layout: &bind_group_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: buffer.as_entire_binding(),
-            }],
-            label: Some("camera_bind_group"),
-        });
+        let buffer = renderer
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Camera Buffer"),
+                contents: bytemuck::cast_slice(&[uniform]),
+                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            });
+        let bind_group_layout =
+            renderer
+                .device
+                .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                    entries: &[wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::VERTEX,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    }],
+                    label: Some("camera_bind_group_layout"),
+                });
+        let bind_group = renderer
+            .device
+            .create_bind_group(&wgpu::BindGroupDescriptor {
+                layout: &bind_group_layout,
+                entries: &[wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: buffer.as_entire_binding(),
+                }],
+                label: Some("camera_bind_group"),
+            });
         Self {
             camera,
             uniform,
@@ -82,9 +90,11 @@ impl CameraGroup {
             bind_group_layout,
         }
     }
-    pub fn update(&mut self, queue: &wgpu::Queue) {
+    pub fn update(&mut self, renderer: &Renderer) {
         self.uniform.update_view_proj(&self.camera);
-        queue.write_buffer(&self.buffer, 0, bytemuck::cast_slice(&[self.uniform]));
+        renderer
+            .queue
+            .write_buffer(&self.buffer, 0, bytemuck::cast_slice(&[self.uniform]));
     }
 }
 

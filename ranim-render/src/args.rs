@@ -1,7 +1,8 @@
 use std::{fmt::Display, path::PathBuf, str::FromStr};
 
 use clap::Parser;
-use winit::dpi::PhysicalSize;
+
+use crate::util::Size;
 
 /// Renderer frontend of `ranim`
 #[derive(Parser, Debug)]
@@ -38,13 +39,13 @@ pub enum Quality {
     Low,
 }
 impl Quality {
-    pub fn size(self) -> PhysicalSize<u32> {
+    pub fn size(self) -> Size {
         match self {
-            Quality::FourK => PhysicalSize::new(3840, 2160),
-            Quality::Production => PhysicalSize::new(2560, 1440),
-            Quality::High => PhysicalSize::new(1920, 1080),
-            Quality::Medium => PhysicalSize::new(1280, 720),
-            Quality::Low => PhysicalSize::new(854, 480),
+            Quality::FourK => Size::new(3840, 2160),
+            Quality::Production => Size::new(2560, 1440),
+            Quality::High => Size::new(1920, 1080),
+            Quality::Medium => Size::new(1280, 720),
+            Quality::Low => Size::new(854, 480),
         }
     }
     pub fn frame_rate(self) -> u32 {

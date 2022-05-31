@@ -1,9 +1,9 @@
-use std::{slice::SliceIndex, ops::RangeBounds, marker::PhantomData};
+use std::{ops::RangeBounds, slice::SliceIndex};
 
 use bytemuck::Pod;
 use wgpu::util::DeviceExt;
 
-use crate::util;
+use crate::{util, Renderer};
 
 pub struct DynamicBuffer<T> {
     pub data: Vec<T>,
@@ -31,7 +31,7 @@ impl<T: Pod> DynamicBuffer<T> {
             raw,
             buffer,
             label,
-            usage
+            usage,
         }
     }
 
@@ -47,7 +47,7 @@ impl<T: Pod> DynamicBuffer<T> {
     pub fn size(&self) -> usize {
         self.raw.len()
     }
-    pub fn update(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
+    pub fn update(&mut self, renderer: &Renderer) {
         let cast_data = bytemuck::cast_slice(&self.data);
         let cast_len = cast_data.len();
         if cast_len > self.raw.len() {
@@ -57,16 +57,18 @@ impl<T: Pod> DynamicBuffer<T> {
 
             self.raw = vec![0; size];
             self.raw[..cast_len].copy_from_slice(cast_data);
-            self.buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: self.label,
-                contents: &self.raw,
-                usage: self.usage | wgpu::BufferUsages::COPY_DST,
-            });
+            self.buffer = renderer
+                .device
+                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: self.label,
+                    contents: &self.raw,
+                    usage: self.usage | wgpu::BufferUsages::COPY_DST,
+                });
         } else {
             self.raw[..cast_len].copy_from_slice(cast_data);
             self.raw[cast_len..].fill(0);
         }
-        queue.write_buffer(&self.buffer, 0, &self.raw);
+        renderer.queue.write_buffer(&self.buffer, 0, &self.raw);
     }
     pub fn slice<S>(&self, bounds: S) -> wgpu::BufferSlice<'_>
     where

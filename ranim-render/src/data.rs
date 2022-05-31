@@ -1,6 +1,4 @@
-use winit::dpi::PhysicalSize;
-
-use crate::camera::CameraGroup;
+use crate::{camera::CameraGroup, Renderer};
 
 use self::{
     buffer::DynamicBuffer,
@@ -17,14 +15,24 @@ pub struct RenderData {
     pub camera: CameraGroup,
 }
 impl RenderData {
-    pub fn new(device: &wgpu::Device, size: PhysicalSize<u32>) -> Self {
-        let vertices =
-            DynamicBuffer::new(device, Some("Vertex Buffer"), wgpu::BufferUsages::VERTEX);
-        let indices = DynamicBuffer::new(device, Some("Index Buffer"), wgpu::BufferUsages::INDEX);
-        let instances =
-            DynamicBuffer::new(device, Some("Instance Buffer"), wgpu::BufferUsages::VERTEX);
+    pub fn new(renderer: &Renderer) -> Self {
+        let vertices = DynamicBuffer::new(
+            &renderer.device,
+            Some("Vertex Buffer"),
+            wgpu::BufferUsages::VERTEX,
+        );
+        let indices = DynamicBuffer::new(
+            &renderer.device,
+            Some("Index Buffer"),
+            wgpu::BufferUsages::INDEX,
+        );
+        let instances = DynamicBuffer::new(
+            &renderer.device,
+            Some("Instance Buffer"),
+            wgpu::BufferUsages::VERTEX,
+        );
 
-        let camera = CameraGroup::new(device, size);
+        let camera = CameraGroup::new(renderer);
 
         Self {
             vertices,
@@ -33,10 +41,10 @@ impl RenderData {
             camera,
         }
     }
-    pub fn update(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
-        self.camera.update(queue);
-        self.vertices.update(device, queue);
-        self.indices.update(device, queue);
-        self.instances.update(device, queue);
+    pub fn update(&mut self, renderer: &Renderer) {
+        self.camera.update(renderer);
+        self.vertices.update(renderer);
+        self.indices.update(renderer);
+        self.instances.update(renderer);
     }
 }

@@ -4,148 +4,176 @@
 
 use args::Args;
 use color_eyre::Result;
-use data::types::Vertex;
-use glam::{vec3, Vec4, vec4, Vec3};
-use renderer::{RenderMode, Renderer};
-use winit::{
-    event::{Event, VirtualKeyCode, WindowEvent},
-    event_loop::{ControlFlow, EventLoop},
-    window::WindowBuilder,
-};
-use winit_input_helper::WinitInputHelper;
-
-use crate::data::types::Instance;
+use data::{types::{Vertex, InstanceRaw}, RenderData};
+use util::Size;
+use winit::window::Window;
 
 pub mod args;
-mod camera;
-mod canvas;
-mod data;
-mod output;
-pub mod renderer;
-mod util;
+pub mod camera;
+pub mod data;
+pub mod util;
+pub mod video;
 
-pub async fn preview(args: Args) -> Result<()> {
-    let mut input = WinitInputHelper::new();
-
-    let event_loop = EventLoop::new();
-    let window = WindowBuilder::new()
-        .with_inner_size(args.quality.size())
-        .build(&event_loop)?;
-    let mut renderer = Renderer::new(RenderMode::Preview { window: &window }).await?;
-
-    event_loop.run(move |event, _, control_flow| {
-        if input.update(&event) && (input.key_released(VirtualKeyCode::Escape) || input.quit()) {
-            *control_flow = ControlFlow::Exit;
-            return;
-        }
-        match event {
-            Event::WindowEvent {
-                ref event,
-                window_id,
-            } if window_id == window.id() => match event {
-                WindowEvent::Resized(physical_size) => renderer.resize(*physical_size),
-                WindowEvent::ScaleFactorChanged { new_inner_size, .. } => {
-                    renderer.resize(**new_inner_size)
-                }
-                _ => {}
-            },
-            Event::RedrawRequested(window_id) if window_id == window.id() => {
-                renderer.update();
-                // TODO: this is cringe
-                let res = pollster::block_on(renderer.render());
-
-                if let Err(e) = res {
-                    if let Some(e) = e.downcast_ref::<wgpu::SurfaceError>() {
-                        match e {
-                            // Reconfigure the surface if lost
-                            wgpu::SurfaceError::Lost => renderer.reconfigure(),
-                            // The system is out of memory, we should probably quit
-                            wgpu::SurfaceError::OutOfMemory => *control_flow = ControlFlow::Exit,
-                            _ => {}
-                        }
-                    }
-                    eprintln!("{e:?}");
-                }
-            }
-            Event::MainEventsCleared => window.request_redraw(),
-            _ => {}
-        }
-    });
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+    #[error("No adapter found.")]
+    NoAdapterFound,
+    #[error(transparent)]
+    RequestDeviceError(#[from] wgpu::RequestDeviceError),
 }
 
-pub async fn output(args: Args) -> Result<()> {
-    use std::f32::consts::*;
-    let mut renderer = Renderer::new(RenderMode::Output { args }).await?;
-
-    renderer.data.vertices.push(Vertex {
-        position: [0.0, 0.0, 0.0],
-        color: [1.0, 1.0, 1.0],
-    });
-
-    let n = 40;
-    for i in 1..=n {
-        let rad = (i as f32 / n as f32) * TAU;
-        renderer.data.vertices.extend([Vertex {
-            position: [-rad.cos(), rad.sin(), 0.0],
-            color: [1.0, 1.0, 1.0],
-        }]);
-        renderer.data.indices.extend([i, 0]);
+pub struct Renderer {
+    pub(crate) device: wgpu::Device,
+    pub(crate) queue: wgpu::Queue,
+    pub(crate) size: Size,
+}
+impl Renderer {
+    pub async fn new(args: &Args) -> Result<Self, Error> {
+        let instance = wgpu::Instance::new(wgpu::Backends::all());
+        Self::new_inner(instance, None, args.quality.size()).await
     }
-    renderer.data.indices.push(1);
-    for _ in 0..60 {
-        let x = 5.0 * rand::random::<f32>() - 2.5;
-        let y = 5.0 * rand::random::<f32>() - 2.5;
-        let s = 0.9 * rand::random::<f32>() + 0.1;
-        let color: Vec3 = rand::random::<[f32; 3]>().into();
-
-        renderer.data.instances.push(Instance {
-            position: vec3(x, y, 0.0),
-            scale: vec3(s, s, 0.0),
-            color: vec4(color.x, color.y, color.z, 1.0),
-            ..Instance::default()
-        }.into());
-        for _ in 0..2 {
-            renderer.update();
-            renderer.render().await?;
-        }
+    pub async fn from_window(window: &Window) -> Result<Self, Error> {
+        let instance = wgpu::Instance::new(wgpu::Backends::all());
+        let size = window.inner_size();
+        let surface = unsafe { instance.create_surface(window) };
+        Self::new_inner(instance, Some(surface), size.into()).await
     }
+    async fn new_inner(
+        instance: wgpu::Instance,
+        surface: Option<wgpu::Surface>,
+        size: Size,
+    ) -> Result<Self, Error> {
+        let adapter = instance
+            .request_adapter(&wgpu::RequestAdapterOptions {
+                power_preference: wgpu::PowerPreference::default(),
+                compatible_surface: surface.as_ref(),
+                force_fallback_adapter: false,
+            })
+            .await
+            .ok_or(Error::NoAdapterFound)?;
+
+        let (device, queue) = adapter
+            .request_device(&wgpu::DeviceDescriptor::default(), None)
+            .await?;
+        Ok(Self { device, queue, size })
+    }
+}
 
 
-    // let t_end = fr * 3;
+pub struct RenderPass {
+    pipeline: wgpu::RenderPipeline,
+}
+impl RenderPass {
+    pub fn new(renderer: &Renderer, data: &RenderData) -> Self {
+        let layout = renderer.device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("Render Pipeline Layout"),
+            bind_group_layouts: &[&data.camera.bind_group_layout],
+            push_constant_ranges: &[],
+        });
+        let shader = renderer.device.create_shader_module(&wgpu::include_wgsl!("shaders/shader.wgsl"));
+        let pipeline = renderer.device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("Render Pipeline"),
+            layout: Some(&layout),
+            vertex: wgpu::VertexState {
+                module: &shader,
+                entry_point: "vertex",
+                buffers: &[Vertex::desc(), InstanceRaw::desc()],
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &shader,
+                entry_point: "fragment",
+                targets: &[wgpu::ColorTargetState {
+                    format: wgpu::TextureFormat::Rgba8Unorm,
+                    blend: Some(wgpu::BlendState::REPLACE),
+                    write_mask: wgpu::ColorWrites::ALL,
+                }],
+            }),
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleStrip,
+                strip_index_format: None,
+                front_face: wgpu::FrontFace::Ccw,
+                cull_mode: Some(wgpu::Face::Back),
+                polygon_mode: wgpu::PolygonMode::Fill,
+                unclipped_depth: false,
+                conservative: false,
+            },
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState {
+                count: 1,
+                mask: !0,
+                alpha_to_coverage_enabled: false,
+            },
+            multiview: None,
+        });
+        Self { pipeline }
+    }
+    pub fn execute(
+        &mut self,
+        encoder: &mut wgpu::CommandEncoder,
+        rgb: &RgbTexture,
+        data: &RenderData,
+    ) {
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("Render Pass"),
+            color_attachments: &[wgpu::RenderPassColorAttachment {
+                view: &rgb.tv.view,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(wgpu::Color {
+                        r: 0.3,
+                        g: 0.6,
+                        b: 0.9,
+                        a: 1.0,
+                    }),
+                    store: true,
+                },
+            }],
+            depth_stencil_attachment: None,
+        });
 
-    // let mut inst_rot = 0.0;
-    // let mut inst = Instance {
-    //     position: vec3(-4.0, 0.0, 0.0),
-    //     rotation: Quat::IDENTITY,
-    //     scale: vec3(1.0, 1.0, 1.0),
-    // };
+        pass.set_pipeline(&self.pipeline);
+        pass.set_bind_group(0, &data.camera.bind_group, &[]);
+        pass.set_vertex_buffer(0, data.vertices.slice(..));
+        pass.set_vertex_buffer(1, data.instances.slice(..));
+        pass.set_index_buffer(data.indices.slice(..), wgpu::IndexFormat::Uint16);
 
-    // for i in 0..t_end {
-    //     let t = i as f32 / t_end as f32;
+        pass.draw_indexed(
+            0..data.indices.len() as u32,
+            0,
+            0..data.instances.len() as u32,
+        );
+    }
+}
 
-    //     if (i + 30) % (fr / 3) == 0 {
-    //         // one second passed
-    //         renderer.data.instances.push(inst);
-    //         inst.position.x += 1.5;
-    //         inst.position.y = t.sin();
-    //         inst_rot += FRAC_PI_6;
-    //         inst.rotation = Quat::from_rotation_z(inst_rot);
-    //         inst.scale *= 0.8;
-    //     }
+struct TextureAndView {
+    texture: wgpu::Texture,
+    view: wgpu::TextureView,
+}
+impl TextureAndView {
+    fn new(device: &wgpu::Device, desc: &wgpu::TextureDescriptor<'_>) -> Self {
+        let texture = device.create_texture(desc);
+        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+        Self { texture, view }
+    }
+}
 
-    //     renderer.data.vertices[0].position[0] = 0.4 + 0.25 * (t * 5.0 * TAU).sin();
-    //     renderer.data.vertices[1].position[0] = -0.4 + -0.25 * (t * 5.0 * TAU).sin();
-    //     renderer.data.vertices[2].position[1] = 0.9 + 0.4 * (t * 5.0 * TAU).cos();
-
-    //     // let translation = 0.6 * (t * 2.0 * TAU).sin();
-    //     // let rotation = t * 0.7 * TAU;
-    //     // renderer.data.camera.camera.position.y = translation;
-    //     // renderer.data.camera.camera.rotation = rotation;
-
-    //     renderer.update();
-    //     renderer.render().await?;
-    // }
-
-    renderer.finish()?;
-    Ok(())
+pub struct RgbTexture {
+    tv: TextureAndView,
+}
+impl RgbTexture {
+    pub fn new(renderer: &Renderer) -> Self {
+        let desc = wgpu::TextureDescriptor {
+            size: renderer.size.extent(),
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8Unorm,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                | wgpu::TextureUsages::TEXTURE_BINDING
+                | wgpu::TextureUsages::COPY_SRC,
+            label: Some("RGB texture"),
+        };
+        let tv = TextureAndView::new(&renderer.device, &desc);
+        Self { tv }
+    }
 }
