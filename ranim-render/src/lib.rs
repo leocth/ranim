@@ -1,4 +1,3 @@
-#![feature(portable_simd)]
 #![feature(array_chunks)]
 #![deny(rust_2018_idioms)]
 
@@ -120,9 +119,9 @@ impl RenderPass {
                 resolve_target: None,
                 ops: wgpu::Operations {
                     load: wgpu::LoadOp::Clear(wgpu::Color {
-                        r: 0.3,
-                        g: 0.6,
-                        b: 0.9,
+                        r: 0.9,
+                        g: 0.7,
+                        b: 0.4,
                         a: 1.0,
                     }),
                     store: true,

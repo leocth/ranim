@@ -12,8 +12,7 @@ pub struct Size {
 impl Size {
     pub fn new(width: u32, height: u32) -> Self {
         // bytes per row must be aligned to COPY_BYTES_PER_ROW_ALIGNMENT
-        let bytes_per_row = (width * PIXEL_STRIDE as u32 / COPY_BYTES_PER_ROW_ALIGNMENT + 1)
-            * COPY_BYTES_PER_ROW_ALIGNMENT;
+        let bytes_per_row = crate::util::pad_to_bytes_per_row_alignment(width as usize) as u32;
         Self {
             width,
             height,

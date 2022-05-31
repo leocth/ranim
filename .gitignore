@@ -5,4 +5,4 @@ Cargo.lock
 # flamegraph
 perf.data
 perf.data.old
-flamegraph.svg
+flamegraph*

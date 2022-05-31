@@ -2,7 +2,6 @@ use std::{
     ffi::CString,
     num::NonZeroU32,
     ops::{Index, IndexMut},
-    simd::{f32x4, u8x4},
 };
 
 use color_eyre::Result;
@@ -40,7 +39,7 @@ impl VideoRenderer {
         let yuv_texture = YuvTexture::new(&renderer);
         let yuv_buffer = YuvBuffer::new(&renderer);
         let render_pass = RenderPass::new(&renderer, &data);
-        let yuv_pass = YuvPass::new(&renderer, &rgb_texture);
+        let yuv_pass = YuvPass::new(&renderer, &rgb_texture, &yuv_texture);
 
         Ok(Self {
             renderer,
@@ -64,28 +63,11 @@ impl VideoRenderer {
                 .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                     label: Some("Render Encoder"),
                 });
-        self.render_pass.execute(&mut encoder, &self.rgb_texture, &self.data);
-
-        // encoder.copy_texture_to_buffer(
-        //     wgpu::ImageCopyTexture {
-        //         aspect: wgpu::TextureAspect::All,
-        //         texture: &self.rgb_texture.tv.texture,
-        //         mip_level: 0,
-        //         origin: wgpu::Origin3d::ZERO,
-        //     },
-        //     wgpu::ImageCopyBuffer {
-        //         buffer: &self.yuv_buffer.buf,
-        //         layout: wgpu::ImageDataLayout {
-        //             offset: 0,
-        //             bytes_per_row: NonZeroU32::new(self.renderer.size.bytes_per_row),
-        //             rows_per_image: NonZeroU32::new(self.renderer.size.height),
-        //         },
-        //     },
-        //     self.renderer.size.extent(),
-        // );
+        self.render_pass
+            .execute(&mut encoder, &self.rgb_texture, &self.data);
 
         self.yuv_pass
-            .execute(&mut encoder, &self.rgb_texture, &self.yuv_buffer);
+            .execute(&mut encoder, &self.yuv_texture, &self.yuv_buffer);
         self.renderer.queue.submit([encoder.finish()]);
 
         let view = self.yuv_buffer.view(&self.renderer.device).await;
@@ -257,25 +239,28 @@ impl VideoEncoder {
     pub fn encode(&mut self, buf: &YuvBufferView<'_>) -> Result<()> {
         let width = self.size.width as usize;
         let height = self.size.height as usize;
+        let bytes_per_row = self.size.bytes_per_row as usize;
         let mut dst_y = FrameData::new(&self.frame, 0, height);
         let mut dst_u = FrameData::new(&self.frame, 1, height / 2);
         let mut dst_v = FrameData::new(&self.frame, 2, height / 2);
 
-        // println!("{:?}", &buf.view[0..16]);
+        // TODO: optimize this
+        for sy in 0..height / 2 {
+            for sx in 0..width / 2 {
+                let y = sy * 2;
+                let x = sx * 2;
 
-        Self::rgba2yuv420(
-            &buf.view,
-            &mut dst_y,
-            &mut dst_u,
-            &mut dst_v,
-            self.size.bytes_per_row as usize,
-            width,
-            height,
-        );
-        // println!("{:?}", &dst_y.buf[0..16]);
-        // println!("{:?}", &dst_u.buf[0..8]);
-        // println!("{:?}", &dst_v.buf[0..8]);
-        // println!();
+                dst_y[(x, y)] = buf.view[y * bytes_per_row + x * 4];
+                dst_y[(x + 1, y)] = buf.view[y * bytes_per_row + (x + 1) * 4];
+                dst_y[(x, y + 1)] = buf.view[(y + 1) * bytes_per_row + x * 4];
+                dst_y[(x + 1, y + 1)] = buf.view[(y + 1) * bytes_per_row + (x + 1) * 4];
+
+                let u = buf.view[y * bytes_per_row + x * 4 + 1];
+                let v = buf.view[y * bytes_per_row + x * 4 + 2];
+                dst_u[(sx, sy)] = u;
+                dst_v[(sx, sy)] = v;
+            }
+        }
 
         self.frame.set_pts(self.frame_cnt);
         self.frame_cnt += 1;
@@ -308,56 +293,6 @@ impl VideoEncoder {
         }
         Ok(())
     }
-
-    fn rgba2yuv420(
-        src: &[u8],
-        dst_y: &mut FrameData<'_>,
-        dst_u: &mut FrameData<'_>,
-        dst_v: &mut FrameData<'_>,
-        src_bytes_per_row: usize,
-        width: usize,
-        height: usize,
-    ) {
-        let y_vec = f32x4::from([0.2578125, 0.50390625, 0.09765625, 0.0]);
-        let u_vec = f32x4::from([-0.1484375, -0.2890625, 0.4375, 0.0]);
-        let v_vec = f32x4::from([0.4375, -0.3671875, -0.0703125, 0.0]);
-
-        let pixel = |x: usize, y: usize| -> f32x4 {
-            let base_pos = x * PIXEL_STRIDE as usize + y * src_bytes_per_row;
-            u8x4::from_slice(&src[base_pos..base_pos + PIXEL_STRIDE as usize]).cast()
-        };
-        let mut write_y = |x: usize, y: usize, rgba: f32x4| {
-            dst_y[(x, y)] = ((rgba * y_vec).reduce_sum() + 16.0) as u8;
-        };
-        let mut write_u = |x: usize, y: usize, rgba: f32x4| {
-            dst_u[(x, y)] = ((rgba * u_vec).reduce_sum() + 128.0) as u8;
-        };
-        let mut write_v = |x: usize, y: usize, rgba: f32x4| {
-            dst_v[(x, y)] = ((rgba * v_vec).reduce_sum() + 128.0) as u8;
-        };
-
-        for y in 0..height / 2 {
-            for x in 0..width / 2 {
-                let px = x * 2;
-                let py = y * 2;
-
-                let pix00 = pixel(px, py);
-                let pix01 = pixel(px, py + 1);
-                let pix10 = pixel(px + 1, py);
-                let pix11 = pixel(px + 1, py + 1);
-
-                let fours = f32x4::from([4.0, 4.0, 4.0, 4.0]);
-                let avg_pix = (pix00 + pix01 + pix10 + pix11) / fours;
-
-                write_y(px, py, pix00);
-                write_y(px, py + 1, pix01);
-                write_y(px + 1, py, pix10);
-                write_y(px + 1, py + 1, pix11);
-                write_u(x, y, avg_pix);
-                write_v(x, y, avg_pix);
-            }
-        }
-    }
 }
 
 pub struct YuvPass {
@@ -368,7 +303,7 @@ pub struct YuvPass {
     size: Size,
 }
 impl YuvPass {
-    pub fn new(renderer: &Renderer, rgb: &RgbTexture) -> Self {
+    pub fn new(renderer: &Renderer, rgb: &RgbTexture, yuv: &YuvTexture) -> Self {
         let shader = renderer
             .device
             .create_shader_module(&wgpu::include_wgsl!("shaders/yuv420.wgsl"));
@@ -380,7 +315,6 @@ impl YuvPass {
                 module: &shader,
                 entry_point: "yuv_main",
             });
-        let yuv = YuvTexture::new(renderer);
         let (dispatch_x, dispatch_y) = compute_work_group_count(renderer.size, (16, 16));
 
         let bind_group = renderer
@@ -411,18 +345,18 @@ impl YuvPass {
     pub fn execute(
         &mut self,
         encoder: &mut wgpu::CommandEncoder,
-        // dst: &YuvTexture,
-        dst: &RgbTexture,
+        dst: &YuvTexture,
+        // dst: &RgbTexture,
         buf: &YuvBuffer,
     ) {
-        // {
-        //     let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
-        //         label: Some("YUV pass"),
-        //     });
-        //     pass.set_pipeline(&self.pipeline);
-        //     pass.set_bind_group(0, &self.bind_group, &[]);
-        //     pass.dispatch(self.dispatch_x, self.dispatch_y, 1);
-        // }
+        {
+            let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                label: Some("YUV pass"),
+            });
+            pass.set_pipeline(&self.pipeline);
+            pass.set_bind_group(0, &self.bind_group, &[]);
+            pass.dispatch(self.dispatch_x, self.dispatch_y, 1);
+        }
         encoder.copy_texture_to_buffer(
             wgpu::ImageCopyTexture {
                 aspect: wgpu::TextureAspect::All,
